@@ -1,9 +1,10 @@
 from flask import Flask, request, jsonify
-from puresnmp import get
+from pysnmp.hlapi.v3arch.asyncio import *
 import socket
 import re
 import subprocess
 import platform
+import asyncio
 
 app = Flask(__name__)
 
@@ -96,18 +97,37 @@ def get_printer_model(ip):
             early_exit = False
             for oid in oids_to_try:
                 try:
-                    # Perform SNMP GET with puresnmp
-                    result = get(ip, community, oid, timeout=2)
+                    # Perform SNMP GET with pysnmp-lextudio
+                    async def get_snmp_value():
+                        async for (errorIndication, errorStatus, errorIndex, varBinds) in getCmd(
+                            SnmpEngine(),
+                            CommunityData(community),
+                            UdpTransportTarget((ip, 161), timeout=2, retries=1),
+                            ContextData(),
+                            ObjectType(ObjectIdentifier(oid))
+                        ):
+                            if not errorIndication and not errorStatus:
+                                return str(varBinds[0][1])
+                            return None
                     
-                    if result and str(result).strip():
-                        value = str(result).strip()
+                    # Run the async function
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    
+                    result = loop.run_until_complete(get_snmp_value())
+                    
+                    if result and result.strip():
+                        value = result.strip()
                         
                         # Skip error responses
                         if value not in ['NOSUCHOBJECT', 'NOSUCHINSTANCE', 'No Such Object currently exists at this OID', 'No Such Instance currently exists at this OID']:
                             if len(value) > 3:  # Valid response
                                 all_results.append({
                                     'raw': value,
-                                    'method': f"puresnmp - community: {community}, OID: {oid}",
+                                    'method': f"pysnmp-lextudio - community: {community}, OID: {oid}",
                                     'oid': oid,
                                     'priority': get_oid_priority(oid, value)
                                 })
@@ -296,7 +316,7 @@ def home():
     </ul>
     
     <hr>
-    <small>Server running | Created with ❤️ | Using PureSNMP (Pure Python, no C deps)</small>
+    <small>Server running | Created with ❤️ | Using pysnmp-lextudio (Python 3.12+ compatible)</small>
     """
 
 @app.route("/diagnose")
@@ -504,8 +524,8 @@ def health():
     return jsonify({
         "status": "healthy",
         "service": "Network Printer Model Detector",
-        "version": "2.5.0",
-        "snmp_library": "puresnmp (Pure Python, Python 3.13+ compatible)",
+        "version": "2.6.0",
+        "snmp_library": "pysnmp-lextudio (Python 3.12+ compatible fork)",
         "features": [
             "Enhanced Epson-specific OID detection",
             "Priority-based SNMP query processing",
@@ -518,14 +538,14 @@ def health():
             "TM-T82X and TM-U220IIB specific detection",
             "Smart result selection algorithm",
             "Fast mode endpoint (⚡ /get-printer-fast)",
-            "Python 3.13+ compatibility with easysnmp"
+            "Python 3.12+ compatibility with pysnmp-lextudio"
         ]
     })
 
 if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", 8000))
-    print("🖨️  Network Printer Model Detector v2.5 - Pure Python SNMP")
+    print("🖨️  Network Printer Model Detector v2.6 - Python 3.12+ Compatible")
     print("=" * 70)
     print(f"🌐 Server running on port: {port}")
     print("📖 Access your application via the Render URL")
@@ -535,6 +555,6 @@ if __name__ == "__main__":
     print("🔄 Enhanced Epson OIDs: TM-T82X, TM-U220IIB detection")
     print("⚡ Priority-based detection: Epson-specific OIDs first")
     print("🚫 Filters generic 'Print Server' responses")
-    print("🐍 Using PureSNMP (Pure Python, no C dependencies)")
+    print("🐍 Using pysnmp-lextudio (maintained fork for Python 3.12+)")
     print("=" * 70)
     app.run(host="0.0.0.0", port=port, debug=False) 
