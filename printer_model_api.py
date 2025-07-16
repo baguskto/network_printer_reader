@@ -4,8 +4,17 @@ import socket
 import re
 import subprocess
 import platform
+import ipaddress
 
 app = Flask(__name__)
+
+def is_private_ip(ip):
+    """Check if IP address is private/local network"""
+    try:
+        ip_obj = ipaddress.ip_address(ip)
+        return ip_obj.is_private
+    except:
+        return False
 
 def ping_host(ip):
     """Test basic connectivity using ping"""
@@ -270,7 +279,8 @@ def comprehensive_connectivity_test(ip):
     results = {
         "ping": ping_host(ip),
         "snmp_port": test_snmp_port(ip),
-        "reachable": False
+        "reachable": False,
+        "is_private": is_private_ip(ip)
     }
     
     results["reachable"] = results["ping"] or results["snmp_port"]
@@ -334,7 +344,14 @@ def diagnose():
         "recommendations": []
     }
     
-    if not connectivity["ping"]:
+    # Check if this is a private IP being accessed from internet server
+    if connectivity.get("is_private", False) and not connectivity["ping"]:
+        diagnosis["recommendations"].append("🌐 This is a private IP address (local network)")
+        diagnosis["recommendations"].append("🚫 Internet servers cannot reach private network IPs")
+        diagnosis["recommendations"].append("ℹ️ This is normal behavior - not an error")
+        diagnosis["recommendations"].append("🏠 For testing: Run this app locally in your network")
+        diagnosis["recommendations"].append("🌍 For live server: Use a printer with public IP")
+    elif not connectivity["ping"]:
         diagnosis["recommendations"].append("❌ Basic ping failed - device might be offline or unreachable")
     else:
         diagnosis["recommendations"].append("✅ Basic ping successful - device is online")
@@ -439,16 +456,31 @@ def get_printer():
         connectivity = comprehensive_connectivity_test(ip)
         
         if not connectivity["reachable"]:
-            return jsonify({
-                "error": "Cannot reach printer at this IP",
-                "ip": ip,
-                "connectivity_details": connectivity,
-                "suggestions": [
+            # Provide different suggestions based on IP type
+            if connectivity.get("is_private", False):
+                suggestions = [
+                    "🌐 This is a private IP (192.168.x.x, 10.x.x.x, 172.16-31.x.x)",
+                    "🚫 Live server cannot reach private network IPs - this is normal",
+                    "✅ For testing: Use force mode: add &force=true",
+                    "🏠 For local testing: Run the app locally in your network",
+                    "🌍 For live server: Use a printer with public IP address",
+                    "🔍 Check diagnostic: /diagnose?ip=" + ip
+                ]
+                error_msg = "Private IP not reachable from internet server"
+            else:
+                suggestions = [
                     "Try with force mode: add &force=true to skip connectivity test",
                     "Check diagnostic: /diagnose?ip=" + ip,
                     "Make sure printer is powered on",
-                    "Verify printer is in the same network"
+                    "Verify printer is accessible from internet"
                 ]
+                error_msg = "Cannot reach printer at this IP"
+                
+            return jsonify({
+                "error": error_msg,
+                "ip": ip,
+                "connectivity_details": connectivity,
+                "suggestions": suggestions
             }), 500
 
     # Get printer model (always try, even if connectivity test failed when forced)
