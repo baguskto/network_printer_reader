@@ -530,15 +530,17 @@ def health():
     })
 
 if __name__ == "__main__":
+    import os
+    port = int(os.environ.get("PORT", 8000))
     print("🖨️  Network Printer Model Detector v2.3 - Enhanced Epson Detection")
     print("=" * 70)
-    print("🌐 Server akan jalan di: http://localhost:8000")
-    print("📖 Buka browser ke: http://localhost:8000")
-    print("⚡ Fast API: http://localhost:8000/get-printer-fast?ip=192.168.68.89")
-    print("🔍 Standard API: http://localhost:8000/get-printer?ip=192.168.68.89")
-    print("🛠️ Diagnostic: http://localhost:8000/diagnose?ip=192.168.68.89")
+    print(f"🌐 Server running on port: {port}")
+    print("📖 Access your application via the Render URL")
+    print("⚡ Fast API: /get-printer-fast?ip=192.168.68.89")
+    print("🔍 Standard API: /get-printer?ip=192.168.68.89")
+    print("🛠️ Diagnostic: /diagnose?ip=192.168.68.89")
     print("🔄 Enhanced Epson OIDs: TM-T82X, TM-U220IIB detection")
     print("⚡ Priority-based detection: Epson-specific OIDs first")
     print("🚫 Filters generic 'Print Server' responses")
     print("=" * 70)
-    app.run(host="0.0.0.0", port=8000, debug=True) 
+    app.run(host="0.0.0.0", port=port, debug=False) 

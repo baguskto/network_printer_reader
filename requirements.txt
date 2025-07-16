@@ -1,3 +1,4 @@
 Flask==2.3.3
 pysnmp==4.4.12
-Werkzeug==2.3.7 
+Werkzeug==2.3.7
+gunicorn==21.2.0 
