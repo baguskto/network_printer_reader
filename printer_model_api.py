@@ -1,10 +1,9 @@
 from flask import Flask, request, jsonify
-from pysnmp.hlapi.v3arch.asyncio import *
+from pysnmp.hlapi import *
 import socket
 import re
 import subprocess
 import platform
-import asyncio
 
 app = Flask(__name__)
 
@@ -97,43 +96,33 @@ def get_printer_model(ip):
             early_exit = False
             for oid in oids_to_try:
                 try:
-                    # Perform SNMP GET with pysnmp-lextudio
-                    async def get_snmp_value():
-                        async for (errorIndication, errorStatus, errorIndex, varBinds) in getCmd(
-                            SnmpEngine(),
-                            CommunityData(community),
-                            UdpTransportTarget((ip, 161), timeout=2, retries=1),
-                            ContextData(),
-                            ObjectType(ObjectIdentifier(oid))
-                        ):
-                            if not errorIndication and not errorStatus:
-                                return str(varBinds[0][1])
-                            return None
+                    # Perform SNMP GET with pysnmp-lextudio (synchronous)
+                    iterator = getCmd(
+                        SnmpEngine(),
+                        CommunityData(community, mpModel=0),
+                        UdpTransportTarget((ip, 161), timeout=2, retries=1),
+                        ContextData(),
+                        ObjectType(ObjectIdentifier(oid))
+                    )
+
+                    errorIndication, errorStatus, errorIndex, varBinds = next(iterator)
                     
-                    # Run the async function
-                    try:
-                        loop = asyncio.get_event_loop()
-                    except RuntimeError:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                    
-                    result = loop.run_until_complete(get_snmp_value())
-                    
-                    if result and result.strip():
-                        value = result.strip()
-                        
-                        # Skip error responses
-                        if value not in ['NOSUCHOBJECT', 'NOSUCHINSTANCE', 'No Such Object currently exists at this OID', 'No Such Instance currently exists at this OID']:
-                            if len(value) > 3:  # Valid response
+                    if not errorIndication and not errorStatus:
+                        result = str(varBinds[0][1])
+                        if result and result != 'No Such Object currently exists at this OID' and result != 'No Such Instance currently exists at this OID':
+                            # Clean up the result
+                            result = result.strip()
+                            
+                            if len(result) > 3:  # Valid response
                                 all_results.append({
-                                    'raw': value,
+                                    'raw': result,
                                     'method': f"pysnmp-lextudio - community: {community}, OID: {oid}",
                                     'oid': oid,
-                                    'priority': get_oid_priority(oid, value)
+                                    'priority': get_oid_priority(oid, result)
                                 })
                                 
                                 # Early exit if we get excellent result from Epson-specific OID
-                                if ('1.3.6.1.4.1.1248' in oid and ('TM-' in value.upper() or 'EPSON' in value.upper())):
+                                if ('1.3.6.1.4.1.1248' in oid and ('TM-' in result.upper() or 'EPSON' in result.upper())):
                                     early_exit = True
                                     break
                 except Exception as e:
